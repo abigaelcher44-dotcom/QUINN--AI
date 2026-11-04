@@ -56,3 +56,19 @@ This repository is intended for continued development. Review the source code, d
 
 ## License
 Add the applicable project license before distributing QUINN AI.
+
+---
+
+## Exile Organization
+
+<p align="center">
+  <img src="docs/assets/exile-organization-logo.png" alt="Exile Organization" width="140">
+</p>
+
+<p align="center">
+  **Developed and maintained by Exile Organization**
+</p>
+
+<p align="center">
+  © 2026 Exile Organization. All rights reserved.
+</p>
