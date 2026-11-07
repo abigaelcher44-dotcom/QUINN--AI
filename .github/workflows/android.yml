@@ -27,7 +27,7 @@ jobs:
           sed -i '/@swc\/core-android-arm64/d' package.json
           npm install --legacy-peer-deps
           npm install @capacitor/core @capacitor/cli @capacitor/android
-          npx cap init "QUINN AI" "com.quinnai.app" --web-dir=dist --noprompt
+          npx cap init "QUINN AI" "com.quinnai.app" --web-dir=dist
 
       - name: Compile Production Web Assets
         run: npm run build
