@@ -19,11 +19,11 @@ jobs:
       - name: Set up Node.js Environment
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Install System and Capacitor Dependencies
         run: |
-          npm install
+          npm install --force
           npm install @capacitor/core @capacitor/cli @capacitor/android
           npx cap init "QUINN AI" "com.quinnai.app" --web-dir=dist --noprompt
 
