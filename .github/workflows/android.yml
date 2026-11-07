@@ -1,0 +1,48 @@
+name: Build Android APK
+on:
+  push:
+    branches: [ master, main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up Java Runtime
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Set up Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install System and Capacitor Dependencies
+        run: |
+          npm install
+          npm install @capacitor/core @capacitor/cli @capacitor/android
+          npx cap init "QUINN AI" "com.quinnai.app" --web-dir=dist --noprompt
+
+      - name: Compile Production Web Assets
+        run: npm run build
+
+      - name: Integrate Android Project Structure
+        run: |
+          npx cap add android || true
+          npx cap sync android
+
+      - name: Compile Standalone Android APK File
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload Finished APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: quinn-ai-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk

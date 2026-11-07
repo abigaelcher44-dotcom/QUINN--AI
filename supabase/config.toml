@@ -1,0 +1,23 @@
+project_id = "heeszqbyxflgfecznzmr"
+
+[functions.quinn-chat]
+verify_jwt = false
+
+[functions.home-proxy]
+verify_jwt = false
+
+[functions.car-proxy]
+verify_jwt = false
+
+[functions.quinn-image]
+verify_jwt = false
+
+[functions.quinn-analyze]
+verify_jwt = false
+
+[functions.quinn-phone]
+verify_jwt = false
+
+[functions.quinn-health]
+verify_jwt = false
+

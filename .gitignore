@@ -1,0 +1,49 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+electron-release/
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# QUINN development backups and repair snapshots
+electron-release-optimized/
+*.before-*
+*.bak
+package.json.before-security-fix
+package-lock.json.before-security-fix
+quinn-identity-before/
+quinn-step1-before/
+quinn-step2-before/
+quinn-step3-before/
+quinn-step4-before/
+quinn-theme-before/
+repair-source-snapshot/
+repair-upload/
+# Exclude unused tooling metadata and alternative lockfile
+.lovable/
+bun.lockb
+public/quinn-chat-background-before-final.jpg

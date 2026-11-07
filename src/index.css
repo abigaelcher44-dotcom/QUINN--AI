@@ -1,0 +1,179 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. */
+
+@layer base {
+  :root {
+    --background: 345 45% 8%;
+    --foreground: 0 0% 98%;
+    --card: 345 38% 12%;
+    --card-foreground: 0 0% 98%;
+    --popover: 345 38% 12%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 267 75% 62%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 270 22% 17%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 270 18% 16%;
+    --muted-foreground: 270 10% 72%;
+    --accent: 340 55% 32%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 65% 45%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 270 18% 24%;
+    --input: 270 18% 20%;
+    --ring: 267 75% 62%;
+    --radius: 0.65rem;
+    --sidebar-background: 345 42% 10%;
+    --sidebar-foreground: 0 0% 96%;
+    --sidebar-primary: 267 75% 62%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 340 55% 32%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 270 18% 24%;
+    --sidebar-ring: 267 75% 62%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@keyframes quinn-breathe {
+  0%, 100% { opacity: 0.75; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.04); }
+}
+
+@keyframes quinn-scan {
+  0% { transform: translateY(-46%); opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { transform: translateY(46%); opacity: 0; }
+}
+
+/* Installed-app safe areas (notches, home indicator) */
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  padding: 0;
+  overscroll-behavior: none;
+}
+
+      body {
+        background-color: #160d20;
+        color: #faf8fc;
+      }
+
+
+/* QUINN CINEMATIC MOTION SYSTEM */
+:root {
+  --quinn-motion-fast: 160ms;
+  --quinn-motion-normal: 240ms;
+  --quinn-motion-panel: 320ms;
+  --quinn-motion-ease: cubic-bezier(0.2, 0.75, 0.25, 1);
+  --quinn-motion-emphasis: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes quinn-message-enter {
+  from { opacity: 0; transform: translate3d(0, 9px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@keyframes quinn-panel-enter {
+  from { opacity: 0; transform: translate3d(0, 12px, 0) scale(0.99); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+
+@keyframes quinn-core-idle {
+  0%, 100% { filter: drop-shadow(0 0 5px rgba(56,189,248,0.18)); }
+  50% { filter: drop-shadow(0 0 12px rgba(56,189,248,0.34)); }
+}
+
+@keyframes quinn-core-thinking {
+  0%, 100% { filter: drop-shadow(0 0 7px rgba(56,189,248,0.25)); }
+  50% { filter: drop-shadow(0 0 17px rgba(56,189,248,0.52)); }
+}
+
+.quinn-message-enter {
+  animation: quinn-message-enter 260ms var(--quinn-motion-emphasis) both;
+}
+
+.quinn-panel-enter {
+  animation: quinn-panel-enter var(--quinn-motion-panel) var(--quinn-motion-emphasis) both;
+}
+
+.quinn-control {
+  transition:
+    color var(--quinn-motion-fast) ease,
+    background-color var(--quinn-motion-fast) ease,
+    border-color var(--quinn-motion-fast) ease,
+    box-shadow var(--quinn-motion-normal) ease,
+    transform var(--quinn-motion-fast) var(--quinn-motion-ease);
+}
+
+.quinn-control:hover {
+  transform: translateY(-1px);
+}
+
+.quinn-control:active {
+  transform: translateY(0) scale(0.985);
+}
+
+.quinn-control:focus-visible {
+  outline: 2px solid rgba(103, 232, 249, 0.8);
+  outline-offset: 3px;
+}
+
+.quinn-reactor[data-state="idle"] svg {
+  animation: quinn-core-idle 3.2s ease-in-out infinite;
+}
+
+.quinn-reactor[data-state="thinking"] svg {
+  animation: quinn-core-thinking 1.8s ease-in-out infinite;
+}
+
+.quinn-reactor[data-state="listening"] svg,
+.quinn-reactor[data-state="speaking"] svg {
+  filter: drop-shadow(0 0 13px rgba(56,189,248,0.42));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .quinn-control:hover,
+  .quinn-control:active {
+    transform: none;
+  }
+
+  .quinn-message-enter,
+  .quinn-panel-enter {
+    animation: none;
+  }
+}
+
+/* QUINN: consistent white interface typography */
+body, body #root, body #root :not(iframe):not(svg) { color: #ffffff !important; }
+body #root input::placeholder, body #root textarea::placeholder { color: rgba(255,255,255,0.68) !important; }
+body #root .bg-white, body #root .bg-gray-50, body #root .bg-gray-100, body #root .bg-slate-50, body #root .bg-slate-100, body #root .bg-zinc-50, body #root .bg-neutral-50 { background-color: #240812 !important; }
