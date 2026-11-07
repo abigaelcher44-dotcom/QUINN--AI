@@ -21,9 +21,10 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Install System and Capacitor Dependencies
+      - name: Clean Platform Lockfiles and Install Dependencies
         run: |
-          npm install --force
+          rm -f package-lock.json
+          npm install --legacy-peer-deps
           npm install @capacitor/core @capacitor/cli @capacitor/android
           npx cap init "QUINN AI" "com.quinnai.app" --web-dir=dist --noprompt
 
