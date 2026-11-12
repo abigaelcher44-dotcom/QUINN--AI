@@ -47,3 +47,11 @@ repair-upload/
 .lovable/
 bun.lockb
 public/quinn-chat-background-before-final.jpg
+
+# QUINN Android release signing material
+*.jks
+*.keystore
+android/app/release-keystore.*
+
+# Local recovery backups — never commit
+quinn-*-backup-*/

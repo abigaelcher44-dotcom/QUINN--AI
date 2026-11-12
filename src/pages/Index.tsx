@@ -5,7 +5,7 @@ import {
   MessageSquare, Phone, ShieldCheck, Home, Car, LayoutDashboard, Wand2, Film,
   FileText, BookOpen, Settings, Send, X, AudioLines,
   History, FilePlus2, Radio, Contact2, Menu, Volume2, VolumeX, Grid3x3, KeyRound,
-  Paperclip, FileText as AttachmentFileIcon,
+  Paperclip, FileText as AttachmentFileIcon, Download,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -53,6 +53,7 @@ import { AiError, type ToolCall, type ModelTier } from '@/lib/ai';
 import { rememberGeneratedImage } from '@/lib/generatedImage';
 import ActivityCenter from '@/components/ActivityCenter';
 import ApiKeysSection from '@/components/ApiKeysSection';
+import AppUpdatesSection from '@/components/AppUpdatesSection';
 
 const menuItems = [
   { id: 'transcript', icon: History, label: 'Chat History' },
@@ -62,6 +63,7 @@ const menuItems = [
   { id: 'health', icon: Activity, label: 'Health' },
   { id: 'audit', icon: ShieldCheck, label: 'Audit' },
   { id: 'api', icon: KeyRound, label: 'API Keys' },
+  { id: 'app-updates', icon: Download, label: 'App Updates' },
 
   { id: 'mission', icon: LayoutDashboard, label: 'Mission' },
   { id: 'research', icon: BookOpen, label: 'Research' },
@@ -111,7 +113,7 @@ const navGroups = [
   { id: 'Home', label: 'Home', icon: Home, items: [] },
   { id: 'Messages', label: 'Messages', icon: MessageSquare, items: ['whatsapp', 'calls', 'contacts'] },
   { id: 'AI Studio', label: 'AI Studio', icon: Wand2, items: ['analysis', 'research', 'cinema', 'imagegen', 'voicestudio', 'voice'] },
-  { id: 'My Tools', label: 'My Tools', icon: Files, items: ['transcript', 'docs', 'files', 'camera', 'share', 'apps'] },
+  { id: 'My Tools', label: 'My Tools', icon: Files, items: ['transcript', 'docs', 'files', 'camera', 'share', 'apps', 'app-updates'] },
   { id: 'System', label: 'System', icon: Activity, items: ['mission', 'dashboard', 'system', 'house', 'car', 'health', 'audit', 'voicecmd'] },
   { id: 'API Keys', label: 'API Keys', icon: KeyRound, items: ['api'] },
 ];
@@ -299,6 +301,7 @@ const Index = () => {
       case 'health': return <HealthSection />;
       case 'audit': return <AuditSection />;
       case 'api': return <ApiKeysSection />;
+      case 'app-updates': return <AppUpdatesSection />;
       case 'mission': return <MissionControl onOpenSection={setPanel} />;
       case 'research': return <ResearchSection />;
       case 'cinema': return <VideoStoryboardSection />;

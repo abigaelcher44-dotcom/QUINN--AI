@@ -1,0 +1,38 @@
+name: Validate QUINN Release Updates
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Verify downloadable update assets
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate published release assets
+        if: github.event_name == 'release'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const release = context.payload.release;
+            const names = release.assets.map(asset => asset.name);
+            const hasExe = names.some(name => name.toLowerCase().endsWith(".exe"));
+            const hasApk = names.some(name => name.toLowerCase().endsWith(".apk"));
+            const hasLatest = names.some(name => name.toLowerCase() === "latest.yml");
+            const hasChecksum = names.some(name => name.toLowerCase().endsWith(".apk.sha256"));
+
+            core.info(`Release: ${release.tag_name}`);
+            core.info(`Assets: ${names.join(", ")}`);
+
+            if (!hasExe) core.setFailed("Windows installer is missing.");
+            if (!hasApk) core.setFailed("Android APK is missing.");
+            if (!hasChecksum) core.setFailed("Android APK checksum is missing.");
+            if (!hasLatest) core.setFailed("Electron latest.yml update metadata is missing.");
+
+      - name: Explain manual validation mode
+        if: github.event_name == 'workflow_dispatch'
+        run: echo "Publish a combined release to run automatic asset validation."
