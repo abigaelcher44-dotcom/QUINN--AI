@@ -79,6 +79,7 @@ export type AiFaultCode =
   | "network"
   | "timeout"
   | "aborted"
+  | "protocol"
   | "server";
 
 export class AiError extends Error {
@@ -201,8 +202,12 @@ export async function streamChat(
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
+        if (done) {
+          buf += decoder.decode();
+          if (buf && !buf.endsWith("\n")) buf += "\n";
+        } else {
+          buf += decoder.decode(value, { stream: true });
+        }
         let nl: number;
         while ((nl = buf.indexOf("\n")) !== -1) {
           const line = buf.slice(0, nl).trim();
@@ -225,22 +230,36 @@ export async function streamChat(
               if (tc.function?.arguments) cur.args += tc.function.arguments;
               partials.set(idx, cur);
             }
-          } catch {
-            /* partial SSE frame */
+          } catch (error) {
+            throw new AiError(
+              "protocol",
+              `Failed to parse SSE frame: ${(error as Error).message}`,
+            );
           }
         }
+        if (done) break;
       }
 
       if (partials.size && opts.onToolCalls) {
         const calls: ToolCall[] = [...partials.values()]
           .filter((p) => p.name)
           .map((p) => {
-            let args: Record<string, unknown> = {};
+            let parsed: unknown;
             try {
-              args = p.args ? JSON.parse(p.args) : {};
-            } catch {
-              args = {};
+              parsed = p.args ? JSON.parse(p.args) : {};
+            } catch (error) {
+              throw new AiError(
+                "protocol",
+                `Invalid arguments for tool "${p.name}": ${String(error)}`,
+              );
             }
+            if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+              throw new AiError(
+                "protocol",
+                `Tool "${p.name}" arguments must be a JSON object.`,
+              );
+            }
+            const args = parsed as Record<string, unknown>;
             return { id: p.id, name: p.name, args };
           });
         if (calls.length) opts.onToolCalls(calls);

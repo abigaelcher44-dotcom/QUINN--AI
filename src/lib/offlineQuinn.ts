@@ -9,7 +9,7 @@ export interface OfflineResponse {
 }
 
 const greetings = [
-  "At your service, Sir.",
+  "At your service, Madam.",
   "Online and standing by.",
   "Good to hear from you. How may I assist?",
   "Ready when you are.",
@@ -20,14 +20,14 @@ const pick = <T,>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)];
 function offlineRespondBase(input: string): OfflineResponse {
   const q = input.toLowerCase().trim();
 
-  if (!q) return { text: "I'm listening, Sir." };
+  if (!q) return { text: "I'm listening, Madam." };
 
   if (/\b(hi|hello|hey|quinn|good (morning|evening|afternoon))\b/.test(q)) {
     return { text: pick(greetings) };
   }
 
   if (/\b(time|what time|clock)\b/.test(q)) {
-    return { text: `The current time is ${new Date().toLocaleTimeString()}, Sir.` };
+    return { text: `The current time is ${new Date().toLocaleTimeString()}, Madam.` };
   }
   if (/\b(date|day|today)\b/.test(q)) {
     return { text: `Today is ${new Date().toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" })}.` };
@@ -47,7 +47,7 @@ function offlineRespondBase(input: string): OfflineResponse {
   if (/^(search|google|look up|find)\b/.test(q)) {
     const term = q.replace(/^(search|google|look up|find)\s+(for\s+)?/, "");
     return {
-      text: `I'd run a web search for "${term}", Sir, but we appear to be offline. I'll queue it for when connection returns.`,
+      text: `I'd run a web search for "${term}", Madam, but we appear to be offline. I'll queue it for when connection returns.`,
       action: { type: "queue_search", payload: term },
     };
   }
@@ -58,7 +58,7 @@ function offlineRespondBase(input: string): OfflineResponse {
       if (/^[0-9+\-*/().\s]+$/.test(math[1])) {
         // eslint-disable-next-line no-new-func
         const result = Function(`"use strict"; return (${math[1]})`)();
-        return { text: `That would be ${result}, Sir.` };
+        return { text: `That would be ${result}, Madam.` };
       }
     } catch {}
   }
@@ -70,12 +70,12 @@ function offlineRespondBase(input: string): OfflineResponse {
     };
   }
 
-  if (/\b(thank|thanks)\b/.test(q)) return { text: "Always a pleasure, Sir." };
+  if (/\b(thank|thanks)\b/.test(q)) return { text: "Always a pleasure, Madam." };
   if (/\b(bye|goodbye|exit)\b/.test(q)) return { text: "Standing by. Call when you need me." };
 
   return {
     text:
-      "I'm in offline mode, Sir — limited reasoning. Reconnect, and I'll handle that in full.",
+      "I'm in offline mode, Madam — limited reasoning. Reconnect, and I'll handle that in full.",
   };
 }
 

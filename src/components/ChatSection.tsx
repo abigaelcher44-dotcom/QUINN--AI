@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Bot, User, Send, Mic, Volume2, VolumeX, Wifi, WifiOff, Paperclip, X, FileText, Image as ImageIcon } from "lucide-react";
 import * as pdfjsLib from "pdfjs-dist";
-import { fileToDataUrl, streamChat, streamImage } from "@/lib/ai";
+import { detectLocalApi, fileToDataUrl, streamChat, streamImage } from "@/lib/ai";
 import { rememberGeneratedImage } from "@/lib/generatedImage";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -15,6 +15,12 @@ import { memoryContext } from "@/lib/memory";
 import { logReasoning } from "@/lib/reasoningLog";
 import { getVoiceCharacter } from "@/lib/voiceMode";
 import { getQuinnPersonalityPrompt } from "@/lib/personality";
+
+const isLocalQuinnRuntime = () =>
+  typeof window !== "undefined" &&
+  (window.location.protocol === "file:" ||
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1");
 
 interface Message {
   id: string;
@@ -115,7 +121,7 @@ const ChatSection = () => {
     {
       id: "1",
       content:
-        "QUINN AI online. All systems nominal. Your intelligent assistant, ready to help. I'm at your service, Sir.",
+        "QUINN AI online. All systems nominal. Your intelligent assistant, ready to help. I'm at your service, Madam.",
       sender: "ai",
       timestamp: new Date(),
     },
@@ -130,8 +136,13 @@ const ChatSection = () => {
   const voiceOnRef = useRef(false);
 
   useEffect(() => {
-    const up = () => setOnline(true);
-    const down = () => setOnline(false);
+    const syncOnline = async () => {
+      const localApi = isLocalQuinnRuntime() ? await detectLocalApi(true) : "";
+      setOnline(Boolean(localApi) || navigator.onLine);
+    };
+    const up = () => { void syncOnline(); };
+    const down = () => { void syncOnline(); };
+    void syncOnline();
     window.addEventListener("online", up);
     window.addEventListener("offline", down);
     return () => {
@@ -280,7 +291,11 @@ const ChatSection = () => {
       return;
     }
 
-    if (!online) {
+    const localApi = isLocalQuinnRuntime() ? await detectLocalApi(true) : "";
+    const aiAvailable = Boolean(localApi) || navigator.onLine;
+    setOnline(aiAvailable);
+
+    if (!aiAvailable) {
       if (images.length) {
         const answer = "Image analysis needs an online AI provider. Your image was not analyzed. Reconnect and send it again.";
         setMessages((m) => m.map((x) => x.id === aiId ? { ...x, content: answer } : x));
@@ -702,7 +717,7 @@ const ChatSection = () => {
           onKeyDown={(e) => e.key === "Enter" && send()}
           placeholder={
             online
-              ? "Speak freely, Sir…"
+              ? "Speak freely, Madam…"
               : "Offline mode — local commands only"
           }
           className="flex-1 bg-[#240812] border-purple-500/30 text-purple-50 placeholder:text-purple-500/50 focus-visible:ring-purple-500/40"

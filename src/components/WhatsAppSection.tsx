@@ -123,7 +123,11 @@ async function api<T>(route: string, options?: RequestInit): Promise<T> {
 }
 
 const WhatsAppSection = () => {
-  const [view, setView] = useState<"chats" | "contacts" | "automation">("chats");
+  const [view, setView] = useState<"chats" | "contacts" | "automation" | "supplementary">("chats");
+  const [supplementaryPhone, setSupplementaryPhone] = useState("");
+  const [supplementaryDraft, setSupplementaryDraft] = useState("");
+  const [supplementarySaving, setSupplementarySaving] = useState(false);
+  const [supplementarySending, setSupplementarySending] = useState(false);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [syncedContacts, setSyncedContacts] = useState<Contact[]>([]);
   const [name, setName] = useState("");
@@ -192,6 +196,14 @@ const WhatsAppSection = () => {
     void api<{ enabled: boolean }>("/whatsapp/conversation-ai")
       .then((config) => { if (active) setConversationAIEnabled(config.enabled === true); })
       .catch((error) => { if (active) console.warn("Could not load WhatsApp conversational AI settings:", error); });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void api<{ phone: string }>("/whatsapp/supplementary")
+      .then((config) => { if (active) setSupplementaryPhone(config.phone || ""); })
+      .catch((error) => { if (active) console.warn("Could not load supplementary contact:", error); });
     return () => { active = false; };
   }, []);
 
@@ -382,6 +394,56 @@ const WhatsAppSection = () => {
     }
   };
 
+  const saveSupplementaryContact = async () => {
+    if (supplementarySaving) return;
+    setSupplementarySaving(true);
+    try {
+      const result = await api<{ phone: string }>("/whatsapp/supplementary", {
+        method: "POST",
+        body: JSON.stringify({ phone: supplementaryPhone }),
+      });
+      setSupplementaryPhone(result.phone || "");
+      toast.success(result.phone ? "Supplementary contact saved." : "Supplementary contact cleared.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save supplementary contact.");
+    } finally {
+      setSupplementarySaving(false);
+    }
+  };
+
+  const sendSupplementaryMessage = async () => {
+    const text = supplementaryDraft.trim();
+    const to = supplementaryPhone.trim();
+
+    if (!status.connected) {
+      toast.error("Connect WhatsApp first.");
+      return;
+    }
+    if (!to) {
+      toast.error("Save a supplementary phone number first.");
+      return;
+    }
+    if (!text) {
+      toast.error("Write a message first.");
+      return;
+    }
+
+    setSupplementarySending(true);
+    try {
+      await api("/whatsapp/send", {
+        method: "POST",
+        body: JSON.stringify({ to, text }),
+      });
+      setSupplementaryDraft("");
+      await refresh();
+      toast.success("Message submitted to the supplementary contact.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Message could not be sent.");
+    } finally {
+      setSupplementarySending(false);
+    }
+  };
+
   const toggleConversationAI = async () => {
     if (conversationAISaving) return;
     const next = !conversationAIEnabled;
@@ -550,6 +612,7 @@ const WhatsAppSection = () => {
           ["chats", "Chats"],
           ["contacts", "Contacts"],
           ["automation", "Automation"],
+          ["supplementary", "Supplementary Contact"],
         ] as const).map(([key, label]) => (
           <button
             key={key}
@@ -878,7 +941,100 @@ const WhatsAppSection = () => {
       </section>
       )}
 
-      {view !== "automation" && (
+      {view === "supplementary" && (
+        <section className="flex-1 min-h-0 overflow-y-auto bg-[#152128] p-4 space-y-5">
+          <div>
+            <h3 className="text-sm font-semibold text-[#00a884]">Supplementary Contact</h3>
+            <p className="mt-1 text-xs text-[#8696a0]">
+              Configure the trusted WhatsApp number that receives your messages and controls HOME/AWAY mode.
+            </p>
+          </div>
+
+          <div className="max-w-2xl rounded-lg border border-[#30434c] p-4 space-y-3">
+            <label className="block text-sm font-medium text-[#e9edef]" htmlFor="supplementary-phone">
+              Authorized phone number
+            </label>
+            <Input
+              id="supplementary-phone"
+              type="tel"
+              value={supplementaryPhone}
+              onChange={(e) => setSupplementaryPhone(e.target.value)}
+              placeholder="Country code + phone number"
+              disabled={supplementarySaving}
+              className="bg-[#202c33] border-[#30434c] text-[#e9edef]"
+            />
+            <div className="flex flex-wrap gap-2">
+              <Button
+                onClick={() => void saveSupplementaryContact()}
+                disabled={supplementarySaving}
+                className="bg-[#00a884] text-[#071b16] hover:bg-[#06cf9c]"
+              >
+                {supplementarySaving ? "Saving..." : "Save number"}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setSupplementaryPhone("")}
+                disabled={supplementarySaving || !supplementaryPhone}
+                className="border-[#40545e] text-[#b6c4cb]"
+              >
+                Clear field
+              </Button>
+            </div>
+            <p className="text-xs text-[#8696a0]">
+              Use the full international number, including country code. Saving an empty number clears the authorized contact.
+            </p>
+          </div>
+
+          <div className="max-w-2xl rounded-lg border border-[#30434c] p-4 space-y-3">
+            <h4 className="text-sm font-semibold text-[#e9edef]">Send a WhatsApp message</h4>
+            <Textarea
+              value={supplementaryDraft}
+              onChange={(e) => setSupplementaryDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void sendSupplementaryMessage();
+                }
+              }}
+              placeholder="Write a message to your supplementary contact..."
+              disabled={!status.connected || supplementarySending || !supplementaryPhone.trim()}
+              className="bg-[#202c33] border-[#30434c] text-[#e9edef] placeholder:text-[#8696a0] resize-none min-h-24"
+            />
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs text-[#8696a0]">
+                {!status.connected ? "Connect WhatsApp to send." : !supplementaryPhone.trim() ? "Save a number first." : "Shift+Enter for a new line."}
+              </span>
+              <Button
+                onClick={() => void sendSupplementaryMessage()}
+                disabled={!status.connected || supplementarySending || !supplementaryPhone.trim() || !supplementaryDraft.trim()}
+                className="bg-[#00a884] text-[#071b16] hover:bg-[#06cf9c]"
+              >
+                {supplementarySending ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4 mr-2" />
+                )}
+                Send
+              </Button>
+            </div>
+          </div>
+
+          <div className="max-w-2xl rounded-lg border border-[#30434c] bg-[#202c33] p-4 space-y-2">
+            <h4 className="text-sm font-semibold text-[#00a884]">Remote HOME / AWAY commands</h4>
+            <p className="text-sm text-[#e9edef]">
+              Text <strong>AWAY</strong> from this authorized number to enable WhatsApp conversational AI and automatic replies.
+            </p>
+            <p className="text-sm text-[#e9edef]">
+              Text <strong>HOME</strong> to disable both reply systems.
+            </p>
+            <p className="text-xs text-[#8696a0]">
+              Commands are case-insensitive and must be sent as a standalone message. Existing approved-contact lists, cooldowns and daily limits remain in force. Quinn will acknowledge recognized commands.
+            </p>
+          </div>
+        </section>
+      )}
+
+      {view !== "automation" && view !== "supplementary" && (
       <div className="grid grid-cols-[minmax(10rem,0.85fr)_minmax(0,1.5fr)] flex-1 min-h-0">
         <aside className="border-r border-purple-500/20 flex flex-col min-h-0">
           {view === "contacts" && (

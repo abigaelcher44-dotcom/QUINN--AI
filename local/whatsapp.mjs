@@ -14,6 +14,9 @@ import {
   handleWhatsAppConversationIncoming,
   getWhatsAppConversationAIConfig,
 } from "./whatsapp-conversation.mjs";
+import {
+  handleSupplementaryCommand,
+} from "./whatsapp-supplementary.mjs";
 
 const AUTH_DIR =
   process.env.QUINN_WHATSAPP_AUTH_DIR ||
@@ -505,6 +508,23 @@ export async function connectWhatsApp() {
         const rawMessage = unwrapMessage(msg.message);
         const mediaKind = rawMessage.imageMessage ? "image"
           : rawMessage.videoMessage ? "video" : "";
+
+        // Supplementary HOME/AWAY commands must be consumed before either reply engine.
+        if (
+          type === "notify" &&
+          !item.fromMe &&
+          jid.endsWith("@s.whatsapp.net") &&
+          item.text &&
+          msg.key?.id
+        ) {
+          const command = handleSupplementaryCommand(item);
+          if (command.handled) {
+            void sendWhatsAppMessage(jid, command.response).catch((error) => {
+              console.error("[Supplementary contact] Command acknowledgement failed:", error.message);
+            });
+            continue;
+          }
+        }
 
         if (
           type === "notify" &&

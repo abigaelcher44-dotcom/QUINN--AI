@@ -4,14 +4,17 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "node scripts/dev.cjs",
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
     "electron": "npm run build && electron .",
     "package:win": "npm run build && npm run icons && electron-builder --win nsis",
-    "icons": "node scripts/build-icons.cjs"
+    "icons": "node scripts/build-icons.cjs",
+    "dev:vite": "vite",
+    "server": "node local/server.mjs",
+    "local": "node scripts/dev.cjs"
   },
   "dependencies": {
     "@codemirror/lang-cpp": "^6.0.3",
@@ -137,6 +140,18 @@
       "createStartMenuShortcut": true,
       "shortcutName": "QUINN AI"
     },
-    "asar": true
+    "asar": true,
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "abigaelcher44-dotcom",
+        "repo": "QUINN--AI",
+        "releaseType": "release"
+      }
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/abigaelcher44-dotcom/QUINN--AI.git"
   }
 }

@@ -54,8 +54,8 @@ export default function ApiKeysSection() {
         ok: false,
         text:
           window.location.protocol === 'https:'
-            ? 'Local API not reachable from this hosted page. Run QUINN locally (python main.py) and open http://localhost:8080 — keys only work in the local/desktop build.'
-            : 'Local API not detected on ports 8787-8789. Start it with: python main.py',
+            ? 'The local API is not reachable from this hosted page. Start QUINN on your PC with npm run dev, then open http://localhost:8080.'
+            : 'The local API is offline. Start QUINN with npm run dev, which launches both the API and the interface.',
       });
       return;
     }

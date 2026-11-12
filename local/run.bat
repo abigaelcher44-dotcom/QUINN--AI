@@ -13,10 +13,9 @@ if errorlevel 1 (
   exit /b 1
 )
 
-where python >nul 2>nul
-if errorlevel 1 (
-  echo   Python 3 is required: https://www.python.org
+if not exist "node_modules\vite\bin\vite.js" (
+  echo   Dependencies are missing. Run npm install first.
   exit /b 1
 )
 
-python main.py
+npm run dev

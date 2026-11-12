@@ -1,4 +1,5 @@
 const { app, BrowserWindow, shell, ipcMain } = require("electron");
+const { autoUpdater } = require("electron-updater");
 const path = require("node:path");
 const fs = require("node:fs");
 const { spawn } = require("node:child_process");
@@ -34,17 +35,49 @@ async function startLocalApi() {
     return false;
   }
 
-  const dataDir = app.getPath("userData");
-  const logPath = path.join(dataDir, "logs", "quinn-api.log");
+  const dataDir = path.join(os.homedir(), ".quinn-ai");
+  const logPath = path.join(app.getPath("userData"), "logs", "quinn-api.log");
   const port = process.env.QUINN_PORT || "8787";
   const healthUrl = `http://127.0.0.1:${port}/health`;
 
+  const readHealth = async () => {
+    try {
+      const response = await fetch(healthUrl, {
+        signal: AbortSignal.timeout(1200),
+      });
+      if (!response.ok) return { reachable: true, payload: null };
+      return { reachable: true, payload: await response.json() };
+    } catch {
+      return null;
+    }
+  };
+
   try {
     fs.mkdirSync(path.dirname(logPath), { recursive: true });
+    fs.mkdirSync(dataDir, { recursive: true });
     apiLogStream = fs.createWriteStream(logPath, { flags: "a" });
     apiLogStream.write(
       "\n===== QUINN API START " + new Date().toISOString() + " =====\n",
     );
+
+    // Reuse an existing QUINN API instead of spawning a duplicate.
+    const existing = await readHealth();
+    if (existing?.payload?.service === "quinn-local-api") {
+      apiLogStream.write(
+        `[health] Reusing existing QUINN API (PID ${existing.payload.pid}).\n`,
+      );
+      return true;
+    }
+
+    // Never mistake an unrelated process for the QUINN API.
+    if (existing?.reachable) {
+      apiLogStream.write(
+        `[startup error] Port ${port} is occupied by a service that is not QUINN.\n`,
+      );
+      apiLogStream.end();
+      apiLogStream = null;
+      return false;
+    }
 
     apiProc = spawn(process.execPath, [serverPath], {
       cwd: appRoot,
@@ -52,7 +85,7 @@ async function startLocalApi() {
         ...process.env,
         ELECTRON_RUN_AS_NODE: "1",
         QUINN_PORT: port,
-        ...(app.isPackaged ? { QUINN_DATA_DIR: dataDir } : {}),
+        QUINN_DATA_DIR: dataDir,
       },
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
@@ -82,28 +115,45 @@ async function startLocalApi() {
       apiLogStream = null;
     });
 
-    // Do not expose the UI as ready until the local API answers health checks.
+    // Require the health response to identify this exact child process.
     const deadline = Date.now() + 20000;
     while (Date.now() < deadline) {
       if (child.exitCode !== null || child.killed) break;
-      try {
-        const response = await fetch(healthUrl, {
-          signal: AbortSignal.timeout(1200),
-        });
-        if (response.ok) {
-          apiLogStream?.write("[health] Local API is ready.\n");
-          return true;
-        }
-      } catch {
-        // The API may still be starting.
+
+      const health = await readHealth();
+      if (
+        health?.payload?.service === "quinn-local-api" &&
+        Number(health.payload.pid) === child.pid
+      ) {
+        apiLogStream?.write("[health] This Electron API process is ready.\n");
+        return true;
       }
+
+      if (health?.reachable) {
+        apiLogStream?.write(
+          `[startup error] Port ${port} answered, but not from the spawned API process.\n`,
+        );
+        break;
+      }
+
       await new Promise((resolve) => setTimeout(resolve, 400));
     }
 
-    apiLogStream?.write("[health] Local API did not become ready in time.\n");
+    apiLogStream?.write("[health] Local API did not become ready.\n");
+
+    if (child.exitCode === null) {
+      try {
+        child.kill();
+      } catch {
+        // The child may already have exited.
+      }
+    }
+
     return false;
   } catch (error) {
     apiLogStream?.write(`[startup error] ${error.message}\n`);
+    apiLogStream?.end();
+    apiLogStream = null;
     return false;
   }
 }
@@ -336,6 +386,39 @@ companionWindow.close();
 }
 });
 
+
+function configureAutoUpdates() {
+  if (!app.isPackaged) return;
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.allowPrerelease = false;
+
+  autoUpdater.on("checking-for-update", () => {
+    console.log("[QUINN updater] Checking for updates.");
+  });
+
+  autoUpdater.on("update-available", (info) => {
+    console.log("[QUINN updater] Update available:", info.version);
+  });
+
+  autoUpdater.on("update-not-available", () => {
+    console.log("[QUINN updater] Application is up to date.");
+  });
+
+  autoUpdater.on("update-downloaded", (info) => {
+    console.log("[QUINN updater] Update downloaded:", info.version);
+  });
+
+  autoUpdater.on("error", (error) => {
+    console.error("[QUINN updater] Update failed:", error.message);
+  });
+
+  void autoUpdater.checkForUpdatesAndNotify().catch((error) => {
+    console.error("[QUINN updater] Update check failed:", error.message);
+  });
+}
+
 const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
@@ -358,6 +441,7 @@ if (!gotTheLock) {
 
     createWindow();
     createCompanionWindow();
+    configureAutoUpdates();
 
     app.on("activate", () => {
       createWindow();

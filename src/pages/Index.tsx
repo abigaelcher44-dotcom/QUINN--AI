@@ -29,7 +29,7 @@ import ResearchSection from '@/components/ResearchSection';
 import VoiceStudio from '@/components/VoiceStudio';
 import AppsSection from '@/components/AppsSection';
 import ArcReactor, { ReactorDock } from '@/components/ArcReactor';
-import { streamChat, streamImage, fileToDataUrl } from '@/lib/ai';
+import { detectLocalApi, streamChat, streamImage, fileToDataUrl } from '@/lib/ai';
 import { offlineRespond } from '@/lib/offlineQuinn';
 import { speakWithProfile } from '@/lib/voiceProfiles';
 import { getQuinnPersonalityPrompt } from '@/lib/personality';
@@ -157,6 +157,12 @@ function renderQuinnMessage(text: string): ReactNode[] {
   return nodes;
 }
 
+const isLocalQuinnRuntime = () =>
+  typeof window !== "undefined" &&
+  (window.location.protocol === "file:" ||
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1");
+
 const Index = () => {
   const [panel, setPanel] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -195,8 +201,13 @@ const Index = () => {
 
   useEffect(() => {
     const t = setInterval(() => setTime(new Date()), 1000);
-    const up = () => setOnline(true);
-    const down = () => setOnline(false);
+    const syncOnline = async () => {
+      const localApi = isLocalQuinnRuntime() ? await detectLocalApi(true) : "";
+      setOnline(Boolean(localApi) || navigator.onLine);
+    };
+    const up = () => { void syncOnline(); };
+    const down = () => { void syncOnline(); };
+    void syncOnline();
     const sync = () => setTurns(listTurns());
     sync();
     window.addEventListener('online', up);
@@ -468,7 +479,11 @@ const Index = () => {
       say(t);
     };
 
-    if (!online) {
+    const localApi = isLocalQuinnRuntime() ? await detectLocalApi(true) : "";
+    const aiAvailable = Boolean(localApi) || navigator.onLine;
+    setOnline(aiAvailable);
+
+    if (!aiAvailable) {
       if (imageAttachments.length) {
         return finish('Image analysis requires an online AI provider with vision support. The attached image was not analyzed.');
       }

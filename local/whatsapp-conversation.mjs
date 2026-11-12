@@ -103,6 +103,11 @@ async function processIncoming(item, jid, text, eventEpoch, media) {
     return { skipped: true, reason: "not-a-group-question" };
   }
 
+  if (!generateReply || !sendMessage) {
+    console.warn("[WhatsApp conversation AI] Generator or sender is unavailable.");
+    return { skipped: true, reason: "service-unavailable" };
+  }
+
   const contact = contactFor(jid);
   const id = String(item.id);
   if (contact.processedIds.includes(id)) {
@@ -119,11 +124,6 @@ async function processIncoming(item, jid, text, eventEpoch, media) {
   contact.history = contact.history.slice(-MAX_HISTORY);
   contact.updatedAt = Date.now();
   persist();
-
-  if (!generateReply || !sendMessage) {
-    console.warn("[WhatsApp conversation AI] Generator or sender is unavailable.");
-    return { skipped: true, reason: "service-unavailable" };
-  }
 
   const name = String(item.name || "WhatsApp contact").slice(0, 100);
   let reply;
