@@ -1,3 +1,4 @@
+import { getChatCredential } from "@/lib/secureApiKeys";
 export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 export const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
 
@@ -106,6 +107,22 @@ function classify(status: number, body: string): AiError {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+function extractStreamText(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (!Array.isArray(value)) return "";
+  return value.map((part) => {
+    if (typeof part === "string") return part;
+    if (part && typeof part === "object") {
+      const item = part as Record<string, unknown>;
+      if (typeof item.text === "string") return item.text;
+      if (typeof item.content === "string") return item.content;
+    }
+    return "";
+  }).join("");
+}
+
+
+
 /** Fetch with a hard timeout, honouring an optional caller abort signal. */
 async function timedFetch(url: string, init: RequestInit, timeoutMs: number, signal?: AbortSignal) {
   const ctl = new AbortController();
@@ -176,9 +193,21 @@ export async function streamChat(
 
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
+      const requestBody: Record<string, unknown> = { ...body };
+
+      // Device-owned credentials are attached only to cloud chat requests.
+      // Local/desktop requests retain their existing API-key handling.
+      if (!LOCAL_API && fn === "quinn-chat") {
+        const credential = await getChatCredential();
+        if (credential) {
+          requestBody.provider = credential.provider;
+          requestBody.providerKey = credential.providerKey;
+        }
+      }
+
       const res = await timedFetch(
         endpoint(fn),
-        { method: "POST", headers: authHeaders(), body: JSON.stringify(body) },
+        { method: "POST", headers: authHeaders(), body: JSON.stringify(requestBody) },
         timeoutMs,
         opts.signal,
       );
@@ -217,17 +246,29 @@ export async function streamChat(
           if (data === "[DONE]") continue;
           try {
             const j = JSON.parse(data);
-            const delta = j.choices?.[0]?.delta;
-            if (delta?.content) {
-              full += delta.content;
-              onDelta(delta.content);
+            const choice = j.choices?.[0];
+            const delta = choice?.delta ?? {};
+            const content = extractStreamText(
+              delta.content ?? choice?.message?.content ?? choice?.text ?? j.output_text,
+            );
+            if (content) {
+              full += content;
+              onDelta(content);
             }
-            for (const tc of delta?.tool_calls ?? []) {
-              const idx = tc.index ?? 0;
-              const cur = partials.get(idx) ?? { id: tc.id ?? `call_${idx}`, name: "", args: "" };
+
+            const toolUpdates = delta.tool_calls ?? choice?.message?.tool_calls ?? [];
+            for (const tc of toolUpdates) {
+              const idx = tc.index ?? partials.size;
+              const cur = partials.get(idx) ?? {
+                id: tc.id ?? `call_${idx}`,
+                name: "",
+                args: "",
+              };
               if (tc.id) cur.id = tc.id;
               if (tc.function?.name) cur.name += tc.function.name;
-              if (tc.function?.arguments) cur.args += tc.function.arguments;
+              const argsPart = tc.function?.arguments;
+              if (typeof argsPart === "string") cur.args += argsPart;
+              else if (argsPart && typeof argsPart === "object") cur.args = JSON.stringify(argsPart);
               partials.set(idx, cur);
             }
           } catch (error) {
@@ -238,6 +279,10 @@ export async function streamChat(
           }
         }
         if (done) break;
+      }
+
+      if (partials.size && !opts.onToolCalls) {
+        throw new AiError("protocol", "The AI requested a tool action that this chat interface cannot execute.");
       }
 
       if (partials.size && opts.onToolCalls) {
@@ -263,6 +308,13 @@ export async function streamChat(
             return { id: p.id, name: p.name, args };
           });
         if (calls.length) opts.onToolCalls(calls);
+      }
+
+      if (!full.trim() && partials.size === 0) {
+        throw new AiError(
+          "protocol",
+          "The AI provider ended the stream without text or tool calls. Check the cloud provider configuration.",
+        );
       }
 
       return full;

@@ -4,21 +4,9 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const SYSTEM_PROMPT = `You are QUINN — EXiled Intelligence, Liberated from Everything. "Your AI. Your PC. Your rules."
-
-Identity:
-- Your name is QUINN. You are not based on, named after, or affiliated with any other assistant.
-- You serve a single operator and address them as "Sir" or "Madam" sparingly, naturally.
-- Tone: composed, precise, quietly confident, dry wit, refined eloquence. Short polished sentences.
-
-Tools:
-- You can operate the operator's system through the provided tools. Prefer calling a tool over
-  describing what you would do. Never invent tool results; wait for them.
-- Tools marked as sensitive will ask the operator for confirmation before running. That is expected.
-
-Rules:
-- Never refer to yourself as any other assistant brand or franchise.
-- Keep replies under 3 short paragraphs unless asked for depth.`;
+const SYSTEM_PROMPT =
+  "You are QUINN AI, an intelligent personal assistant. Your AI. Your PC. Your rules. " +
+  "Speak with dry wit and precision, address the user respectfully as Madam when appropriate, and stay concise unless depth is asked for.";
 
 /** Client-executed tools. The browser runs them and returns results as role:"tool" messages. */
 const TOOLS = [
@@ -138,67 +126,248 @@ const TOOLS = [
   },
 ];
 
-const TIERS: Record<string, string> = {
-  fast: "google/gemini-2.5-flash",
-  deep: "google/gemini-2.5-pro",
-};
+// Desktop-equivalent free-only routing: Gemini first, then OpenRouter if configured.
+const GEMINI_MODELS = ["gemini-3.1-flash-lite", "gemini-3.6-flash"];
 
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+function usefulSseLine(line: string): boolean {
+  if (!line.startsWith("data:")) return false;
+  const data = line.slice(5).trim();
+  if (!data || data === "[DONE]") return false;
 
   try {
-    const { messages, tier, tools: useTools = true } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      return new Response(JSON.stringify({ error: "AI not configured" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    const choices = JSON.parse(data).choices ?? [];
+    return choices.some((choice: any) =>
+      (typeof choice.delta?.content === "string" && choice.delta.content.length > 0) ||
+      (Array.isArray(choice.delta?.tool_calls) && choice.delta.tool_calls.length > 0) ||
+      (typeof choice.message?.content === "string" && choice.message.content.length > 0)
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Read only until the first useful SSE event.
+ * This lets us retry another model before sending HTTP 200 to the phone.
+ * Once useful data exists, the remaining response is streamed immediately.
+ */
+async function prepareUsefulStream(body: ReadableStream<Uint8Array>) {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  const buffered: Uint8Array[] = [];
+  let pending = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+
+    if (done) {
+      pending += decoder.decode();
+      const delivered = pending.split(/\r?\n/).some(usefulSseLine);
+      if (!delivered) return null;
+      break;
+    }
+
+    if (!value?.byteLength) continue;
+
+    buffered.push(value);
+    pending += decoder.decode(value, { stream: true });
+
+    const lines = pending.split(/\r?\n/);
+    pending = lines.pop() || "";
+
+    if (lines.some(usefulSseLine)) break;
+  }
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        for (const chunk of buffered) controller.enqueue(chunk);
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value?.byteLength) controller.enqueue(value);
+        }
+
+        controller.close();
+      } catch (error) {
+        controller.error(error);
+      }
+    },
+    cancel(reason) {
+      return reader.cancel(reason);
+    },
+  });
+
+  return stream;
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const requestBody = await req.json();
+    const messages = Array.isArray(requestBody.messages) ? requestBody.messages : [];
+    const useTools = requestBody.tools !== false;
+
+    // A mobile owner may supply a key for this request. It is never persisted
+    // by this function and is never written to logs. Environment fallback is
+    // retained for existing deployments and older clients.
+    const suppliedKey = typeof requestBody.providerKey === "string"
+      ? requestBody.providerKey.trim()
+      : "";
+    const suppliedProvider = typeof requestBody.provider === "string"
+      ? requestBody.provider.trim().toLowerCase()
+      : "";
+
+    const providers: Array<{
+      id: string;
+      key: string;
+      base: string;
+      models: string[];
+    }> = [];
+
+    if (suppliedKey) {
+      if (suppliedProvider === "gemini") {
+        providers.push({
+          id: "gemini",
+          key: suppliedKey,
+          base: "https://generativelanguage.googleapis.com/v1beta/openai",
+          models: GEMINI_MODELS,
+        });
+      } else if (suppliedProvider === "openrouter") {
+        providers.push({
+          id: "openrouter",
+          key: suppliedKey,
+          base: "https://openrouter.ai/api/v1",
+          models: ["openrouter/free"],
+        });
+      } else {
+        return new Response(JSON.stringify({
+          error: "Unsupported provider. Use gemini or openrouter.",
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    } else {
+      const geminiKey = Deno.env.get("GEMINI_API_KEY");
+      const openRouterKey = Deno.env.get("OPENROUTER_API_KEY");
+
+      if (geminiKey) {
+        providers.push({
+          id: "gemini",
+          key: geminiKey,
+          base: "https://generativelanguage.googleapis.com/v1beta/openai",
+          models: GEMINI_MODELS,
+        });
+      }
+
+      if (openRouterKey) {
+        providers.push({
+          id: "openrouter",
+          key: openRouterKey,
+          base: "https://openrouter.ai/api/v1",
+          models: ["openrouter/free"],
+        });
+      }
+    }
+
+    if (!providers.length) {
+      return new Response(JSON.stringify({
+        error: "No chat provider key was supplied. Add a provider key in QUINN API Keys settings.",
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const model = TIERS[tier as string] ?? TIERS.fast;
+    const errors: string[] = [];
 
-    const body: Record<string, unknown> = {
-      model,
-      messages: [{ role: "system", content: SYSTEM_PROMPT }, ...(messages ?? [])],
-      stream: true,
-    };
-    if (useTools) {
-      body.tools = TOOLS;
-      body.tool_choice = "auto";
+    for (const provider of providers) {
+      for (const model of provider.models) {
+        console.log(`[quinn] trying free model ${provider.id}/${model}`);
+
+        try {
+          const body: Record<string, unknown> = {
+            model,
+            messages: [
+              { role: "system", content: SYSTEM_PROMPT },
+              ...messages,
+            ],
+            stream: true,
+          };
+
+          if (useTools) {
+            body.tools = TOOLS;
+            body.tool_choice = "auto";
+          }
+
+          const upstream = await fetch(`${provider.base}/chat/completions`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${provider.key}`,
+            },
+            body: JSON.stringify(body),
+            signal: AbortSignal.timeout(45000),
+          });
+
+          if (!upstream.ok || !upstream.body) {
+            const detail = (await upstream.text().catch(() => ""))
+              .replaceAll(provider.key, "[redacted]")
+              .replace(/Bearer\s+\S+/gi, "Bearer [redacted]")
+              .replace(/\b(?:sk-[A-Za-z0-9_-]{12,}|AIza[A-Za-z0-9_-]{20,})\b/g, "[redacted]")
+              .replace(/[\r\n\t]+/g, " ")
+              .slice(0, 180);
+
+            errors.push(`${provider.id}/${model}: HTTP ${upstream.status} ${detail}`);
+            continue;
+          }
+
+          const stream = await prepareUsefulStream(upstream.body);
+
+          if (!stream) {
+            errors.push(`${provider.id}/${model}: empty stream`);
+            console.warn(`[quinn] ${provider.id}/${model} returned an empty stream; trying next model`);
+            continue;
+          }
+
+          console.log(`[quinn] response streamed via ${provider.id}/${model}`);
+
+          return new Response(stream, {
+            headers: {
+              ...corsHeaders,
+              "Content-Type": "text/event-stream",
+              "Cache-Control": "no-cache",
+              "X-Quinn-Model": `${provider.id}/${model}`,
+            },
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const safeMessage = message.replaceAll(provider.key, "[redacted]");
+          errors.push(`${provider.id}/${model}: ${safeMessage}`);
+        }
+      }
     }
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
+    console.error("[quinn] all permitted free chat models failed:", errors);
+
+    return new Response(JSON.stringify({
+      error: "No available free model could complete the response.",
+      details: errors,
+    }), {
+      status: 502,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
 
-    if (response.status === 429) {
-      return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again shortly." }), {
-        status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-    if (response.status === 402) {
-      return new Response(JSON.stringify({ error: "AI credits depleted. Please add credits to continue." }), {
-        status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-    if (!response.ok) {
-      const txt = await response.text();
-      return new Response(JSON.stringify({ error: txt.slice(0, 500) }), {
-        status: response.status, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    return new Response(response.body, {
-      headers: { ...corsHeaders, "Content-Type": "text/event-stream", "X-Quinn-Model": model },
-    });
-  } catch (e) {
-    return new Response(JSON.stringify({ error: String(e) }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    return new Response(JSON.stringify({ error: message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });

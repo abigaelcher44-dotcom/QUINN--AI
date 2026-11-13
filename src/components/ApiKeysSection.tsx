@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { KeyRound, Plus, Trash2, Zap, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { detectLocalApi, setLocalApi } from '@/lib/ai';
+import { detectLocalApi, setLocalApi, streamChat } from '@/lib/ai';
+import { isNativeSecureStorage, readApiKeys, readPrimaryProvider, saveApiKeys } from '@/lib/secureApiKeys';
+import { Capacitor } from '@capacitor/core';
 
 type Row = { name: string; value: string };
 
@@ -35,12 +37,29 @@ export default function ApiKeysSection() {
     setProbing(true);
     const found = await detectLocalApi(force);
     setBase(found);
-    if (found) await loadFrom(found).catch(() => {});
+
+    if (found) {
+      await loadFrom(found).catch(() => {});
+    } else {
+      try {
+        const saved = await readApiKeys();
+        const savedPrimary = await readPrimaryProvider();
+        const names = Object.keys(saved);
+        setRows(names.length
+          ? [...names.map((name) => ({ name, value: '' })), blank()]
+          : [blank(), blank()]);
+        setPrimary(savedPrimary);
+        setProviders(names.map((name) => name.replace(/_API_KEY$/, '').toLowerCase()));
+      } catch {
+        setStatus({ ok: false, text: 'Could not access device key storage. Reopen the app and try again.' });
+      }
+    }
+
     setProbing(false);
     return found;
   };
 
-  useEffect(() => { probe(); }, []);
+  useEffect(() => { void probe(); }, []);
 
 
   const update = (i: number, patch: Partial<Row>) =>
@@ -49,6 +68,77 @@ export default function ApiKeysSection() {
   const connect = async () => {
     let target = base;
     if (!target) target = await probe(true);
+
+    // Native mobile builds store the owner's keys on this device and use the
+    // HTTPS Edge Function. No desktop server or Supabase login is required.
+    if (!target && Capacitor.isNativePlatform()) {
+      setBusy(true);
+      setStatus(null);
+      try {
+        const saved = await readApiKeys();
+        const merged: Record<string, string> = { ...saved };
+
+        for (const row of rows) {
+          const name = row.name.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+          const value = row.value.trim();
+          if (name && value) merged[name] = value;
+        }
+
+        const cleaned = Object.fromEntries(
+          Object.entries(merged).filter(([name, value]) =>
+            /^[A-Z0-9_]+$/.test(name) && typeof value === 'string' && value.trim()
+          )
+        );
+
+        if (!Object.keys(cleaned).length) {
+          throw new Error('Enter a provider API key first. For Gemini, use GEMINI_API_KEY.');
+        }
+
+        const preferred = primary.trim().toLowerCase();
+        const hasGemini = Boolean(cleaned.GEMINI_API_KEY);
+        const hasOpenRouter = Boolean(cleaned.OPENROUTER_API_KEY);
+        const selectedProvider = preferred || (hasGemini ? 'gemini' : hasOpenRouter ? 'openrouter' : '');
+
+        if (!selectedProvider || (selectedProvider !== 'gemini' && selectedProvider !== 'openrouter')) {
+          throw new Error('Select gemini or openrouter as the preferred provider, or enter a Gemini/OpenRouter key.');
+        }
+
+        if (selectedProvider === 'gemini' && !hasGemini) {
+          throw new Error('The preferred provider is Gemini, but GEMINI_API_KEY is empty.');
+        }
+        if (selectedProvider === 'openrouter' && !hasOpenRouter) {
+          throw new Error('The preferred provider is OpenRouter, but OPENROUTER_API_KEY is empty.');
+        }
+
+        await saveApiKeys(cleaned, selectedProvider);
+
+        // Verify the actual cloud provider before reporting success.
+        await streamChat(
+          'quinn-chat',
+          { messages: [{ role: 'user', content: 'Reply with exactly: QUINN CONNECTED' }], tools: false },
+          () => {},
+          { attempts: 1, timeoutMs: 45000 },
+        );
+
+        setProviders([selectedProvider]);
+        setRows(
+          [...Object.keys(cleaned).map((name) => ({ name, value: '' })), blank()],
+        );
+        setStatus({
+          ok: true,
+          text: `Connected to ${selectedProvider}. Your key is stored on this device and is sent over HTTPS only when QUINN requests a chat response.`,
+        });
+      } catch (e) {
+        setStatus({
+          ok: false,
+          text: `Key saved on this device, but connection verification failed: ${(e as Error).message}`,
+        });
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
     if (!target) {
       setStatus({
         ok: false,
@@ -99,8 +189,9 @@ export default function ApiKeysSection() {
       </div>
 
       <p className="text-xs text-purple-400/60 leading-relaxed">
-        Paste any provider key below — name it whatever you like (2 minimum, 200 maximum). Keys are written to
-        your local <span className="font-mono text-purple-300">.env</span> and never leave this machine.
+        {Capacitor.isNativePlatform()
+          ? 'Enter your provider key below. On this phone, keys are stored in encrypted device storage and sent over HTTPS to the chat service only when a response is requested.'
+          : 'Paste provider keys below. Desktop keys are saved by the local QUINN engine. Browser-based secure storage is not equivalent to native device encryption.'}
       </p>
 
       <div className="rounded-md border border-purple-500/20 p-3 space-y-2">

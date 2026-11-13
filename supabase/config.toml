@@ -21,3 +21,5 @@ verify_jwt = false
 [functions.quinn-health]
 verify_jwt = false
 
+[functions.exile-chat]
+verify_jwt = false
