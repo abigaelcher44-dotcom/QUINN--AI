@@ -523,6 +523,7 @@ const Index = () => {
 
     try {
       let full = '';
+      let exhaustedToolHops = false;
       for (let hop = 0; hop < 4; hop++) {
         let calls: ToolCall[] = [];
         let chunk = '';
@@ -538,6 +539,7 @@ const Index = () => {
         );
         full += chunk;
         if (!calls.length) break;
+        if (hop === 3) exhaustedToolHops = true;
 
         convo.push({
           role: 'assistant',
@@ -554,6 +556,10 @@ const Index = () => {
           const result = await runTool(call, toolCtx);
           convo.push({ role: 'tool', tool_call_id: result.id, content: result.output });
         }
+      }
+
+      if (exhaustedToolHops) {
+        throw new Error("QUINN completed its tool actions but did not produce a final answer. Please send the request again.");
       }
 
       logReasoning(agent.name, 'Response delivered', full.slice(0, 120));

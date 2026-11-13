@@ -323,6 +323,7 @@ const ChatSection = () => {
       await streamChat(
         "quinn-chat",
         {
+          tools: false,
           messages: [
             ...(memoryContext() ? [{ role: "system", content: memoryContext() }] : []),
             {
